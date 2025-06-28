@@ -2,7 +2,7 @@
 
 # --- LibreELEC On-Demand Emulation Powerhouse ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 2.1 - Dynamic list fetching from Myrient for PS1
+# Version 2.3 - Replaced parsing logic with a robust awk command for reliability.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -86,13 +86,20 @@ populate_psx_from_myrient() {
     echo "Fetching and parsing game list from Myrient... this may take a moment."
     BASE_URL="https://myrient.erista.me/files/Redump/Sony%20-%20PlayStation/"
     
-    # Fetch HTML, extract hrefs, filter for game files, build full URLs, and filter for region
+    # Robust awk command to parse the HTML and extract the correct URLs
     GAME_LIST=$(wget -qO- "$BASE_URL" | \
-                grep -o 'href="[^"]*"' | \
-                sed -e 's/href="//' -e 's/"//' | \
-                grep -E '\.(zip|7z|chd)$' | \
-                grep -E '\((USA|En|Australia)\)' | \
-                while read -r line; do echo "$BASE_URL$line"; done)
+                awk -v base_url="$BASE_URL" -F'"' '
+                    /<a href=/ {
+                        for (i=1; i<=NF; i++) {
+                            if ($i ~ /^href=/) {
+                                url = $(i+1)
+                                if (url ~ /\.(zip|7z|chd)$/ && url ~ /\((USA|En|Australia)\)/) {
+                                    print base_url url
+                                }
+                            }
+                        }
+                    }
+                ')
 
     if [ -z "$GAME_LIST" ]; then
         echo "Could not fetch or parse game list for $system_name. Skipping."
