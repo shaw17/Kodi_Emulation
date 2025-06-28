@@ -2,7 +2,7 @@
 
 # --- LibreELEC On-Demand Emulation Powerhouse ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 4.3 - Updated repository URLs to latest versions.
+# Version 4.4 - Added debug output for download URLs.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -46,10 +46,10 @@ install_software() {
     # Install the Zach Morris repository for IAGL
     if [ ! -d "$KODI_ADDONS/repository.zachmorris" ]; then
         echo "Zach Morris Repository not found. Installing..."
-        # Updated URL from user-provided info
-        REPO_URL_IAGL="https://github.com/zach-morris/repository.zachmorris/releases/download/v1.0.4/repository.zachmorris-1.0.4.zip"
+        REPO_URL_IAGL="https://github.com/zach-morris/repository.zachmorris/releases/download/1.0.4/repository.zachmorris-1.0.4.zip"
         ZIP_PATH_IAGL="$TEMP_DIR/iagl_repo.zip"
         
+        echo "DEBUG: Downloading IAGL Repo from: $REPO_URL_IAGL"
         wget -q -O "$ZIP_PATH_IAGL" "$REPO_URL_IAGL"
         if [ $? -eq 0 ]; then
             kodi-send --action="InstallAddon(fromzip,$ZIP_PATH_IAGL)" > /dev/null 2>&1
@@ -66,11 +66,10 @@ install_software() {
     # Install RetroArch from the Spleen1981 release page
     if [ ! -d "$KODI_ADDONS/game.retroarch" ]; then
         echo "RetroArch not found. Installing from third-party source..."
-        # Updated URL from user-provided info. Defaulting to Amlogic-ng.
-        # This may need changing for different hardware (e.g., Amlogic-no).
         REPO_URL_RA="https://github.com/spleen1981/retroarch-kodi-addon-CoreELEC/releases/download/v1.7.5/script.retroarch.launcher.Amlogic-ng.arm-v1.7.5.zip"
         ZIP_PATH_RA="$TEMP_DIR/retroarch.zip"
         
+        echo "DEBUG: Downloading RetroArch from: $REPO_URL_RA"
         wget -q -O "$ZIP_PATH_RA" "$REPO_URL_RA"
         if [ $? -eq 0 ]; then
             kodi-send --action="InstallAddon(fromzip,$ZIP_PATH_RA)" > /dev/null 2>&1
