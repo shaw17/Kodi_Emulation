@@ -2,7 +2,7 @@
 
 # --- LibreELEC On-Demand Emulation Powerhouse ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 2.7 - Added enhanced debugging output for parsing.
+# Version 2.9 - Added repository update command to ensure add-ons can be found.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -13,26 +13,52 @@ HELPER_SCRIPT_PATH="$AEL_DATA_PATH/launch_game.sh"
 
 # --- Helper Functions & Core Logic ---
 
+wait_for_kodi() {
+    echo "Waiting for Kodi to become available..."
+    local timeout=60
+    while [ $timeout -gt 0 ]; do
+        # Check if Kodi's web server port is listening (default 8080)
+        if netstat -tln | grep -q ':8080'; then
+            echo "Kodi is available."
+            sleep 2 # Give it an extra couple of seconds to settle
+            return 0
+        fi
+        sleep 1
+        timeout=$((timeout - 1))
+    done
+    echo "ERROR: Timed out waiting for Kodi. Is it running?"
+    return 1
+}
+
 install_emulation_software() {
     echo "--- Checking for essential software... ---"
     
+    wait_for_kodi
+    if [ $? -ne 0 ]; then return 1; fi
+
+    echo "Forcing Kodi to update its official repositories..."
+    kodi-send --action="UpdateAddonRepositories" > /dev/null 2>&1
+    echo "Waiting for repository update to complete..."
+    sleep 15 # Allow time for Kodi to fetch new repository data
+
     # Install RetroArch and AEL
     if [ ! -d "$KODI_ADDONS/game.retroarch" ]; then
-        echo "RetroArch not found. Installing..."
+        echo "RetroArch not found. Sending install command..."
         kodi-send --action="InstallAddon(game.retroarch)" > /dev/null 2>&1
     else
         echo "RetroArch already installed."
     fi
 
     if [ ! -d "$KODI_ADDONS/plugin.program.advanced.emulator.launcher" ]; then
-        echo "Advanced Emulator Launcher not found. Installing..."
+        echo "Advanced Emulator Launcher not found. Sending install command..."
         kodi-send --action="InstallAddon(plugin.program.advanced.emulator.launcher)" > /dev/null 2>&1
     else
         echo "Advanced Emulator Launcher already installed."
     fi
     
+    echo "Add-on installation commands sent. Waiting for Kodi to process..."
+    sleep 10 # Allow time for Kodi to install addons in the background
     echo "--- Base software check complete. ---"
-    sleep 3
 }
 
 # This function creates the helper script that AEL will call
@@ -94,39 +120,19 @@ populate_psx_from_myrient() {
         rm -f "$temp_html_file"
         return
     fi
+
+    # Robust sed-based pipeline for extracting URLs from the local HTML file
+    GAME_LIST=$(cat "$temp_html_file" | \
+                sed -n 's/.*<a href="\([^"]*\)".*/\1/p' | \
+                grep -E '\.(zip|7z|chd)$' | \
+                grep -E '\((USA|En|Australia)\)' | \
+                while read -r line; do echo "$BASE_URL$line"; done)
     
-    echo "DEBUG: HTML page downloaded successfully to $temp_html_file"
-
-    # --- DEBUG PIPELINE ---
-    # Step 1: Extract hrefs from the local file
-    STEP1_OUTPUT=$(cat "$temp_html_file" | sed -n 's/.*<a href="\([^"]*\)".*/\1/p')
-    echo "--- DEBUG: Step 1 Output (sed extraction) ---"
-    echo "$STEP1_OUTPUT"
-    echo "--- END DEBUG ---"
-
-    # Step 2: Filter for valid game file extensions
-    STEP2_OUTPUT=$(echo "$STEP1_OUTPUT" | grep -E '\.(zip|7z|chd)$')
-    echo "--- DEBUG: Step 2 Output (grep for file types) ---"
-    echo "$STEP2_OUTPUT"
-    echo "--- END DEBUG ---"
-
-    # Step 3: Filter for English regions
-    STEP3_OUTPUT=$(echo "$STEP2_OUTPUT" | grep -E '\((USA|En|Australia)\)')
-    echo "--- DEBUG: Step 3 Output (grep for region) ---"
-    echo "$STEP3_OUTPUT"
-    echo "--- END DEBUG ---"
-
-    # Step 4: Prepend the base URL to each line
-    GAME_LIST=$(echo "$STEP3_OUTPUT" | while read -r line; do echo "$BASE_URL$line"; done)
-    echo "--- DEBUG: Final GAME_LIST ---"
-    echo "$GAME_LIST"
-    echo "--- END DEBUG ---"
-
     # Clean up the temporary file immediately after use
     rm -f "$temp_html_file"
 
     if [ -z "$GAME_LIST" ]; then
-        echo "Could not parse the game list for $system_name. Please check the debug output above. Skipping."
+        echo "Could not parse the game list for $system_name. Skipping."
         return
     fi
     
@@ -176,10 +182,17 @@ set_boot_to_games() {
     else
         read -p "Set Kodi to boot directly into the Games menu? (y/n): " confirm < /dev/tty
         if [ "$confirm" = "y" ]; then
+            echo "Stopping Kodi service to safely modify settings..."
+            systemctl stop kodi
+            sleep 2
+
             echo "Backing up and modifying guisettings.xml..."
             cp "$KODI_USERDATA/guisettings.xml" "$KODI_USERDATA/guisettings.xml.bak"
             sed -i 's|<startup.*>.*</startup>|<startup><window>games</window></startup>|g' "$KODI_USERDATA/guisettings.xml"
-            echo "Kodi will now boot into the Games menu after restart."
+            
+            echo "Restarting Kodi service..."
+            systemctl start kodi
+            echo "Kodi will now boot into the Games menu."
         fi
     fi
 }
@@ -204,13 +217,13 @@ while true; do
             create_helper_script
             configure_kodi_integration
             set_boot_to_games
-            echo "Full setup check complete! Please restart LibreELEC."
+            echo "Full setup check complete! Please restart LibreELEC for all changes to take effect."
             break
             ;;
         2)
             create_helper_script
             configure_kodi_integration
-            echo "Kodi integration configured!"
+            echo "Kodi integration configured! Please restart Kodi."
             break
             ;;
         3)
