@@ -2,7 +2,7 @@
 
 # --- LibreELEC Resilient Emulation Powerhouse Script ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 1.5 - Replaced select loop with POSIX-compliant menu for full compatibility.
+# Version 1.6 - Fixed infinite loop in main menu.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -268,6 +268,7 @@ while true; do
             break
             ;;
         5)
+            echo "Exiting."
             break
             ;;
         *)
