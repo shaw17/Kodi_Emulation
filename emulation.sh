@@ -2,7 +2,7 @@
 
 # --- LibreELEC On-Demand Emulation Powerhouse ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 4.6 - Implemented robust installation verification.
+# Version 5.1 - Reworked to directly place all add-ons for maximum reliability.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -27,57 +27,29 @@ wait_for_kodi() {
     return 1
 }
 
-verify_addon_installed() {
-    local addon_id=$1
-    local addon_path="$KODI_ADDONS/$addon_id"
-    local timeout=90
-    
-    echo "Verifying installation of '$addon_id'..."
-    while [ $timeout -gt 0 ]; do
-        if [ -d "$addon_path" ]; then
-            echo "'$addon_id' successfully installed."
-            return 0
-        fi
-        sleep 2
-        timeout=$((timeout - 2))
-    done
-
-    echo "ERROR: Timed out waiting for '$addon_id' to install."
-    echo "Please check Kodi's log for more information."
-    return 1
-}
-
 # --- Core Logic Functions ---
 
 install_software() {
-    echo "--- Installing Required Add-ons... ---"
+    echo "--- Installing Required Add-ons using Direct Placement Method---"
     
-    wait_for_kodi
-    if [ $? -ne 0 ]; then return 1; fi
-
-    echo "Forcing Kodi to update its official repositories..."
-    kodi-send --action="UpdateAddonRepositories" > /dev/null 2>&1
-    echo "Waiting for repository update to complete (this may take a moment)..."
-    sleep 20
-
     TEMP_DIR="$KODI_USERDATA/temp"
     mkdir -p "$TEMP_DIR"
+    mkdir -p "$KODI_ADDONS"
 
     # Install the Zach Morris repository for IAGL
     if [ ! -d "$KODI_ADDONS/repository.zachmorris" ]; then
-        echo "Zach Morris Repository not found. Installing..."
-        REPO_URL_IAGL="https://github.com/zach-morris/repository.zachmorris/releases/download/1.0.4/repository.zachmorris-1.0.4.zip"
-        ZIP_PATH_IAGL="$TEMP_DIR/iagl_repo.zip"
+        echo "Zach Morris Repository not found. Downloading and extracting directly..."
+        REPO_URL_IAGL_REPO="https://github.com/zach-morris/repository.zachmorris/releases/download/1.0.4/repository.zachmorris-1.0.4.zip"
+        ZIP_PATH_IAGL_REPO="$TEMP_DIR/iagl_repo.zip"
         
-        wget -q -O "$ZIP_PATH_IAGL" "$REPO_URL_IAGL"
+        wget -q -O "$ZIP_PATH_IAGL_REPO" "$REPO_URL_IAGL_REPO"
         if [ $? -eq 0 ]; then
-            kodi-send --action="InstallAddon(fromzip,$ZIP_PATH_IAGL)" > /dev/null 2>&1
-            verify_addon_installed "repository.zachmorris" || return 1
-            echo "Repository installed. Forcing another update..."
-            kodi-send --action="UpdateAddonRepositories" > /dev/null 2>&1
-            sleep 15
+            unzip -o -q "$ZIP_PATH_IAGL_REPO" -d "$KODI_ADDONS"
+            echo "Zach Morris Repository extracted."
         else
             echo "ERROR: Failed to download the Zach Morris repository."
+            rm -rf "$TEMP_DIR"
+            return 1
         fi
     else
         echo "Zach Morris Repository already installed."
@@ -85,33 +57,52 @@ install_software() {
 
     # Install RetroArch from the Spleen1981 release page
     if [ ! -d "$KODI_ADDONS/game.retroarch" ]; then
-        echo "RetroArch not found. Installing from third-party source..."
+        echo "RetroArch not found. Downloading and extracting directly..."
         REPO_URL_RA="https://github.com/spleen1981/retroarch-kodi-addon-CoreELEC/releases/download/v1.7.5/script.retroarch.launcher.Amlogic-ng.arm-v1.7.5.zip"
         ZIP_PATH_RA="$TEMP_DIR/retroarch.zip"
         
         wget -q -O "$ZIP_PATH_RA" "$REPO_URL_RA"
         if [ $? -eq 0 ]; then
-            kodi-send --action="InstallAddon(fromzip,$ZIP_PATH_RA)" > /dev/null 2>&1
-            verify_addon_installed "game.retroarch" || return 1
+            unzip -o -q "$ZIP_PATH_RA" -d "$KODI_ADDONS"
+            echo "RetroArch extracted."
         else
             echo "ERROR: Failed to download the RetroArch add-on."
+            rm -rf "$TEMP_DIR"
+            return 1
         fi
     else
         echo "RetroArch already installed."
     fi
-
-    # Install IAGL from the Zach Morris repository
+    
+    # Install the Internet Archive Game Launcher add-on itself
     if [ ! -d "$KODI_ADDONS/plugin.program.iagl" ]; then
-        echo "Internet Archive Game Launcher not found. Sending install command..."
-        kodi-send --action="InstallAddon(plugin.program.iagl)" > /dev/null 2>&1
-        verify_addon_installed "plugin.program.iagl" || return 1
+        echo "IAGL add-on not found. Downloading and extracting directly..."
+        REPO_URL_IAGL_PLUGIN="https://github.com/zach-morris/plugin.program.iagl/releases/download/v4.04/plugin.program.iagl-4.0.4.zip"
+        ZIP_PATH_IAGL_PLUGIN="$TEMP_DIR/iagl_plugin.zip"
+
+        wget -q -O "$ZIP_PATH_IAGL_PLUGIN" "$REPO_URL_IAGL_PLUGIN"
+        if [ $? -eq 0 ]; then
+            unzip -o -q "$ZIP_PATH_IAGL_PLUGIN" -d "$KODI_ADDONS"
+            echo "Internet Archive Game Launcher extracted."
+        else
+            echo "ERROR: Failed to download the IAGL plugin."
+            rm -rf "$TEMP_DIR"
+            return 1
+        fi
     else
         echo "Internet Archive Game Launcher already installed."
     fi
-    
+
+
     # Cleanup temporary download directory
     rm -rf "$TEMP_DIR"
 
+    # Restart Kodi to make it detect the new addons
+    echo "Restarting Kodi service to detect new addons..."
+    systemctl restart kodi
+    wait_for_kodi
+    if [ $? -ne 0 ]; then return 1; fi
+    
     # Explicitly enable the add-ons to ensure they are active
     echo "Enabling add-ons..."
     kodi-send --action="EnableAddon(game.retroarch)" > /dev/null 2>&1
