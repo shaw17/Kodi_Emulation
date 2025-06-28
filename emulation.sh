@@ -2,7 +2,7 @@
 
 # --- LibreELEC On-Demand Emulation Powerhouse ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 4.5 - Added EnableAddon command for robustness.
+# Version 4.6 - Implemented robust installation verification.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -24,6 +24,26 @@ wait_for_kodi() {
         timeout=$((timeout - 1))
     done
     echo "ERROR: Timed out waiting for Kodi process. Is it running?"
+    return 1
+}
+
+verify_addon_installed() {
+    local addon_id=$1
+    local addon_path="$KODI_ADDONS/$addon_id"
+    local timeout=90
+    
+    echo "Verifying installation of '$addon_id'..."
+    while [ $timeout -gt 0 ]; do
+        if [ -d "$addon_path" ]; then
+            echo "'$addon_id' successfully installed."
+            return 0
+        fi
+        sleep 2
+        timeout=$((timeout - 2))
+    done
+
+    echo "ERROR: Timed out waiting for '$addon_id' to install."
+    echo "Please check Kodi's log for more information."
     return 1
 }
 
@@ -49,10 +69,10 @@ install_software() {
         REPO_URL_IAGL="https://github.com/zach-morris/repository.zachmorris/releases/download/1.0.4/repository.zachmorris-1.0.4.zip"
         ZIP_PATH_IAGL="$TEMP_DIR/iagl_repo.zip"
         
-        echo "DEBUG: Downloading IAGL Repo from: $REPO_URL_IAGL"
         wget -q -O "$ZIP_PATH_IAGL" "$REPO_URL_IAGL"
         if [ $? -eq 0 ]; then
             kodi-send --action="InstallAddon(fromzip,$ZIP_PATH_IAGL)" > /dev/null 2>&1
+            verify_addon_installed "repository.zachmorris" || return 1
             echo "Repository installed. Forcing another update..."
             kodi-send --action="UpdateAddonRepositories" > /dev/null 2>&1
             sleep 15
@@ -69,11 +89,10 @@ install_software() {
         REPO_URL_RA="https://github.com/spleen1981/retroarch-kodi-addon-CoreELEC/releases/download/v1.7.5/script.retroarch.launcher.Amlogic-ng.arm-v1.7.5.zip"
         ZIP_PATH_RA="$TEMP_DIR/retroarch.zip"
         
-        echo "DEBUG: Downloading RetroArch from: $REPO_URL_RA"
         wget -q -O "$ZIP_PATH_RA" "$REPO_URL_RA"
         if [ $? -eq 0 ]; then
             kodi-send --action="InstallAddon(fromzip,$ZIP_PATH_RA)" > /dev/null 2>&1
-            echo "RetroArch add-on install command sent."
+            verify_addon_installed "game.retroarch" || return 1
         else
             echo "ERROR: Failed to download the RetroArch add-on."
         fi
@@ -85,6 +104,7 @@ install_software() {
     if [ ! -d "$KODI_ADDONS/plugin.program.iagl" ]; then
         echo "Internet Archive Game Launcher not found. Sending install command..."
         kodi-send --action="InstallAddon(plugin.program.iagl)" > /dev/null 2>&1
+        verify_addon_installed "plugin.program.iagl" || return 1
     else
         echo "Internet Archive Game Launcher already installed."
     fi
@@ -92,9 +112,6 @@ install_software() {
     # Cleanup temporary download directory
     rm -rf "$TEMP_DIR"
 
-    echo "Add-on installation commands sent. Waiting for Kodi to process..."
-    sleep 15
-    
     # Explicitly enable the add-ons to ensure they are active
     echo "Enabling add-ons..."
     kodi-send --action="EnableAddon(game.retroarch)" > /dev/null 2>&1
