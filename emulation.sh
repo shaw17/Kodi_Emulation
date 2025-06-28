@@ -2,12 +2,12 @@
 
 # --- LibreELEC On-Demand Emulation Powerhouse ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 5.2 - Added explicit enabling of all downloaded add-ons.
+# Version 5.3 - Replaced EnableAddon command with direct database modification for reliability.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
 KODI_ADDONS="/storage/.kodi/addons"
-IAGL_DATA_PATH="$KODI_USERDATA/addon_data/plugin.program.iagl"
+KODI_DB_FILE="$KODI_USERDATA/Database/Addons33.db" # Path to Kodi's addon database
 
 # --- Helper Functions ---
 
@@ -103,12 +103,21 @@ install_software() {
     wait_for_kodi
     if [ $? -ne 0 ]; then return 1; fi
     
-    # Explicitly enable the add-ons to ensure they are active
-    echo "Enabling add-ons..."
-    kodi-send --action="EnableAddon(repository.zachmorris)" > /dev/null 2>&1
-    kodi-send --action="EnableAddon(game.retroarch)" > /dev/null 2>&1
-    kodi-send --action="EnableAddon(plugin.program.iagl)" > /dev/null 2>&1
-    sleep 5
+    # NEW METHOD: Directly modify the database to enable add-ons
+    echo "Stopping Kodi to safely enable add-ons in the database..."
+    systemctl stop kodi
+    sleep 2
+
+    if [ -f "$KODI_DB_FILE" ]; then
+        echo "Enabling add-ons directly in Kodi's database..."
+        sqlite3 "$KODI_DB_FILE" "UPDATE installed SET enabled=1 WHERE addonID IN ('repository.zachmorris', 'game.retroarch', 'plugin.program.iagl');"
+    else
+        echo "ERROR: Kodi database file not found. Cannot enable add-ons."
+    fi
+    
+    echo "Restarting Kodi with add-ons enabled..."
+    systemctl start kodi
+    wait_for_kodi
 
     echo "--- Software installation check complete. ---"
 }
