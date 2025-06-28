@@ -1,4 +1,4 @@
-Kodi Emulation 
+Kodi Emulation
 
 This project provides a set of scripts to turn a standard LibreELEC (libreelec.tv) installation into a full-blown retro gaming powerhouse.
 
@@ -35,6 +35,7 @@ Note: The command above pipes the script directly to bash. For those who prefer 
 
 # First, download the scripts
 wget https://raw.githubusercontent.com/shaw17/Kodi_Emulation/main/emulation.sh
+
 wget https://raw.githubusercontent.com/shaw17/Kodi_Emulation/main/games.sh
 
 # Make the main script executable
@@ -53,4 +54,4 @@ games.sh: A simple database of curated game packs. This can be updated by the co
 When you run the script, it will first check for updates to itself and the games list. It will then present a menu with several options, allowing you to perform a full installation or just specific tasks.
 
 Disclaimer
-This script facilitates the download of content from the Internet Archive. The legality of downloading and playing copyrighted game ROMs varies by jurisdiction. It is your responsibility to ensure you have the legal right to use this content. This project is for educational purposes only.
+Thiss script facilitates the download of content from the Internet Archive. The legality of downloading and playing copyrighted game ROMs varies by jurisdiction. It is your responsibility to ensure you have the legal right to use this content. This project is for educational purposes only.
