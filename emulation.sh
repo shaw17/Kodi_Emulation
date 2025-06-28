@@ -2,7 +2,7 @@
 
 # --- LibreELEC Resilient Emulation Powerhouse Script ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 1.7 - Fixed main menu input loop when piping script.
+# Version 1.8 - Removed incompatible '--show-progress' wget flag.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -96,7 +96,8 @@ download_pack() {
     
     echo "Downloading and extracting '$console_name'..."
     mkdir -p "$ROMS_PATH/$system_id"
-    wget -q --show-progress -O "$ROMS_PATH/temp_pack.zip" "$download_url"
+    # Removed --show-progress flag for BusyBox wget compatibility
+    wget -q -O "$ROMS_PATH/temp_pack.zip" "$download_url"
     unzip -o -q "$ROMS_PATH/temp_pack.zip" -d "$ROMS_PATH/$system_id/"
     rm "$ROMS_PATH/temp_pack.zip"
     echo "'$console_name' pack installed."
