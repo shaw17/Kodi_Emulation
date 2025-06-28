@@ -2,7 +2,7 @@
 
 # --- LibreELEC Resilient Emulation Powerhouse Script ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 1.6 - Fixed infinite loop in main menu.
+# Version 1.7 - Fixed main menu input loop when piping script.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -118,7 +118,7 @@ run_game_installer() {
     available_space_kb=$(df -k /storage | awk 'NR==2 {print $4}')
     
     if [ "$available_space_kb" -gt "$total_size_kb" ]; then
-        read -p "Sufficient space detected to install all packs. Proceed? (y/n): " confirm
+        read -p "Sufficient space detected to install all packs. Proceed? (y/n): " confirm < /dev/tty
         if [ "$confirm" = "y" ]; then
             echo "$game_packs_data" | while IFS= read -r pack; do
                 if [ -n "$pack" ]; then download_pack "$pack"; fi
@@ -138,7 +138,7 @@ run_game_installer() {
         fi
     done
     
-    read -p "Enter number: " choice
+    read -p "Enter number: " choice < /dev/tty
     pack_to_download=$(echo "$game_packs_data" | sed -n "${choice}p")
     
     if [ -n "$pack_to_download" ]; then
@@ -216,7 +216,7 @@ set_boot_to_games() {
     if grep -q "<startup><window>games</window></startup>" "$KODI_USERDATA/guisettings.xml"; then
         echo "Kodi is already set to boot into Games menu."
     else
-        read -p "Set Kodi to boot directly into the Games menu? (y/n): " confirm
+        read -p "Set Kodi to boot directly into the Games menu? (y/n): " confirm < /dev/tty
         if [ "$confirm" = "y" ]; then
             echo "Backing up and modifying guisettings.xml..."
             cp "$KODI_USERDATA/guisettings.xml" "$KODI_USERDATA/guisettings.xml.bak"
@@ -240,7 +240,7 @@ while true; do
     echo "4) Set Boot to Games Only"
     echo "5) Exit"
     echo
-    read -p "Enter your choice [1-5]: " choice
+    read -p "Enter your choice [1-5]: " choice < /dev/tty
 
     case $choice in
         1)
