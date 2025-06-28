@@ -2,7 +2,7 @@
 
 # --- LibreELEC On-Demand Emulation Powerhouse ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 2.6 - Implemented local file parsing for increased stability.
+# Version 2.7 - Added enhanced debugging output for parsing.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -90,23 +90,43 @@ populate_psx_from_myrient() {
     # Download the index page to a temporary local file first for stability
     wget -qO "$temp_html_file" "$BASE_URL"
     if [ ! -s "$temp_html_file" ]; then
-        echo "Could not download the game list page from Myrient. Skipping."
+        echo "DEBUG: Download failed. The temporary file is missing or empty."
         rm -f "$temp_html_file"
         return
     fi
     
-    # A more compatible sed-based pipeline for extracting URLs from the local HTML file
-    GAME_LIST=$(cat "$temp_html_file" | \
-                sed -n 's/.*<a href="\([^"]*\)".*/\1/p' | \
-                grep -E '\.(zip|7z|chd)$' | \
-                grep -E '\((USA|En|Australia)\)' | \
-                while read -r line; do echo "$BASE_URL$line"; done)
-    
+    echo "DEBUG: HTML page downloaded successfully to $temp_html_file"
+
+    # --- DEBUG PIPELINE ---
+    # Step 1: Extract hrefs from the local file
+    STEP1_OUTPUT=$(cat "$temp_html_file" | sed -n 's/.*<a href="\([^"]*\)".*/\1/p')
+    echo "--- DEBUG: Step 1 Output (sed extraction) ---"
+    echo "$STEP1_OUTPUT"
+    echo "--- END DEBUG ---"
+
+    # Step 2: Filter for valid game file extensions
+    STEP2_OUTPUT=$(echo "$STEP1_OUTPUT" | grep -E '\.(zip|7z|chd)$')
+    echo "--- DEBUG: Step 2 Output (grep for file types) ---"
+    echo "$STEP2_OUTPUT"
+    echo "--- END DEBUG ---"
+
+    # Step 3: Filter for English regions
+    STEP3_OUTPUT=$(echo "$STEP2_OUTPUT" | grep -E '\((USA|En|Australia)\)')
+    echo "--- DEBUG: Step 3 Output (grep for region) ---"
+    echo "$STEP3_OUTPUT"
+    echo "--- END DEBUG ---"
+
+    # Step 4: Prepend the base URL to each line
+    GAME_LIST=$(echo "$STEP3_OUTPUT" | while read -r line; do echo "$BASE_URL$line"; done)
+    echo "--- DEBUG: Final GAME_LIST ---"
+    echo "$GAME_LIST"
+    echo "--- END DEBUG ---"
+
     # Clean up the temporary file immediately after use
     rm -f "$temp_html_file"
 
     if [ -z "$GAME_LIST" ]; then
-        echo "Could not parse the game list for $system_name. The page format may have changed. Skipping."
+        echo "Could not parse the game list for $system_name. Please check the debug output above. Skipping."
         return
     fi
     
