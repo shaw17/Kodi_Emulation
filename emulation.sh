@@ -2,13 +2,13 @@
 
 # --- LibreELEC Resilient Emulation Powerhouse Script ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 1.3 - Added pre-run cleanup for temp files.
+# Version 1.4 - Pointing to versioned games.sh file for reliability.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
 KODI_ADDONS="/storage/.kodi/addons"
 ROMS_PATH="/storage/roms"
-GAMES_DB_URL="https://raw.githubusercontent.com/shaw17/Kodi_Emulation/main/games.sh"
+GAMES_DB_URL="https://raw.githubusercontent.com/shaw17/Kodi_Emulation/main/games.v1.sh" # Using a versioned filename
 GAMES_DB_TEMP_FILE="/tmp/games.sh.$$"
 
 # --- Fetch and Source the games database in real-time ---
