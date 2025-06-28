@@ -2,7 +2,7 @@
 
 # --- LibreELEC On-Demand Emulation Powerhouse ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 5.4 - Implemented robust up-front check to prevent re-downloads.
+# Version 5.5 - Added a Kodi restart cycle for reliable database updates.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -103,7 +103,8 @@ install_software() {
     # Install the Internet Archive Game Launcher add-on itself
     if [ ! -d "$KODI_ADDONS/plugin.program.iagl" ]; then
         echo "IAGL add-on not found. Downloading and extracting directly..."
-        REPO_URL_IAGL_PLUGIN="https://github.com/zach-morris/plugin.program.iagl/releases/download/v3.1.2/plugin.program.iagl-3.1.2.zip"
+        # Updated URL from user
+        REPO_URL_IAGL_PLUGIN="https://github.com/zach-morris/plugin.program.iagl/releases/download/v4.0.4/plugin.program.iagl-4.0.4.zip"
         ZIP_PATH_IAGL_PLUGIN="$TEMP_DIR/iagl_plugin.zip"
 
         wget -q -O "$ZIP_PATH_IAGL_PLUGIN" "$REPO_URL_IAGL_PLUGIN"
@@ -120,7 +121,16 @@ install_software() {
     # Cleanup temporary download directory
     rm -rf "$TEMP_DIR"
 
-    # Now that all files are in place, enable them in the database.
+    # Restart Kodi to allow it to scan for and register the new add-on folders.
+    echo "Restarting Kodi to register new files..."
+    systemctl restart kodi
+    wait_for_kodi
+    if [ $? -ne 0 ]; then
+        echo "Failed to restart Kodi after extraction. Cannot proceed."
+        return 1
+    fi
+
+    # Now that Kodi has run once and created the database entries, enable them.
     enable_addons_in_db
 
     echo "--- Software installation check complete. ---"
