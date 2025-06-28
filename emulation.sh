@@ -2,7 +2,7 @@
 
 # --- LibreELEC On-Demand Emulation Powerhouse ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 4.4 - Added debug output for download URLs.
+# Version 4.5 - Added EnableAddon command for robustness.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -94,6 +94,13 @@ install_software() {
 
     echo "Add-on installation commands sent. Waiting for Kodi to process..."
     sleep 15
+    
+    # Explicitly enable the add-ons to ensure they are active
+    echo "Enabling add-ons..."
+    kodi-send --action="EnableAddon(game.retroarch)" > /dev/null 2>&1
+    kodi-send --action="EnableAddon(plugin.program.iagl)" > /dev/null 2>&1
+    sleep 5
+
     echo "--- Software installation check complete. ---"
 }
 
