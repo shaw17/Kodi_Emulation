@@ -2,7 +2,7 @@
 
 # --- LibreELEC On-Demand Emulation Powerhouse ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 2.9 - Added repository update command to ensure add-ons can be found.
+# Version 3.0 - Replaced web server check with a more reliable process check for Kodi.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -14,19 +14,19 @@ HELPER_SCRIPT_PATH="$AEL_DATA_PATH/launch_game.sh"
 # --- Helper Functions & Core Logic ---
 
 wait_for_kodi() {
-    echo "Waiting for Kodi to become available..."
+    echo "Waiting for Kodi process to be running..."
     local timeout=60
     while [ $timeout -gt 0 ]; do
-        # Check if Kodi's web server port is listening (default 8080)
-        if netstat -tln | grep -q ':8080'; then
-            echo "Kodi is available."
-            sleep 2 # Give it an extra couple of seconds to settle
+        # Check if the kodi.bin process is running, a more reliable method than checking a port
+        if pgrep -f "kodi.bin" >/dev/null; then
+            echo "Kodi process is running. Waiting for services to start..."
+            sleep 5 # Give Kodi time to initialize its services after the process starts
             return 0
         fi
         sleep 1
         timeout=$((timeout - 1))
     done
-    echo "ERROR: Timed out waiting for Kodi. Is it running?"
+    echo "ERROR: Timed out waiting for Kodi process. Is it running?"
     return 1
 }
 
