@@ -2,7 +2,7 @@
 
 # --- LibreELEC On-Demand Emulation Powerhouse ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 2.3 - Replaced parsing logic with a robust awk command for reliability.
+# Version 2.4 - Implemented more robust parsing for Myrient HTML.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -86,20 +86,13 @@ populate_psx_from_myrient() {
     echo "Fetching and parsing game list from Myrient... this may take a moment."
     BASE_URL="https://myrient.erista.me/files/Redump/Sony%20-%20PlayStation/"
     
-    # Robust awk command to parse the HTML and extract the correct URLs
+    # Robust grep/sed pipeline to parse the HTML and extract the correct URLs
     GAME_LIST=$(wget -qO- "$BASE_URL" | \
-                awk -v base_url="$BASE_URL" -F'"' '
-                    /<a href=/ {
-                        for (i=1; i<=NF; i++) {
-                            if ($i ~ /^href=/) {
-                                url = $(i+1)
-                                if (url ~ /\.(zip|7z|chd)$/ && url ~ /\((USA|En|Australia)\)/) {
-                                    print base_url url
-                                }
-                            }
-                        }
-                    }
-                ')
+                grep -o 'href="[^"]*\.\(zip\|7z\|chd\)"' | \
+                sed 's/href="//' | \
+                sed 's/"//' | \
+                grep -E '\((USA|En|Australia)\)' | \
+                while read -r line; do echo "$BASE_URL$line"; done)
 
     if [ -z "$GAME_LIST" ]; then
         echo "Could not fetch or parse game list for $system_name. Skipping."
