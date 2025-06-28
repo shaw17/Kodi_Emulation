@@ -2,7 +2,7 @@
 
 # --- LibreELEC Resilient Emulation Powerhouse Script ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 1.1 - Now fully compatible with LibreELEC's ASH shell.
+# Version 1.3 - Added pre-run cleanup for temp files.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -13,18 +13,22 @@ GAMES_DB_TEMP_FILE="/tmp/games.sh.$$"
 
 # --- Fetch and Source the games database in real-time ---
 echo "--- Fetching latest games list from GitHub... ---"
+
+# Ensure no leftover temp file from a previous failed run exists
+rm -f "$GAMES_DB_TEMP_FILE" 2>/dev/null
+
 wget -qO "$GAMES_DB_TEMP_FILE" "$GAMES_DB_URL"
 if [ $? -eq 0 ]; then
     . "$GAMES_DB_TEMP_FILE" # Use POSIX-compliant source operator
-    rm "$GAMES_DB_TEMP_FILE"
+    rm "$GAMES_DB_TEMP_FILE" # Clean up after successful sourcing
 else
     echo "ERROR: Failed to fetch the games list from GitHub."
     echo "Please check your internet connection and the repository status."
-    rm "$GAMES_DB_TEMP_FILE" 2>/dev/null
+    rm "$GAMES_DB_TEMP_FILE" 2>/dev/null # Clean up on failure
     exit 1
 fi
 
-if [ ${#game_packs[@]} -eq 0 ]; then
+if [ -z "$game_packs_data" ]; then
     echo "ERROR: Games list is empty or could not be sourced correctly."
     exit 1
 fi
@@ -81,17 +85,11 @@ install_emulation_software() {
 download_pack() {
     local pack_string="$1"
     
-    # POSIX-compliant string splitting
-    IFS=';'
-    set -f # disable globbing
-    set -- $pack_string
-    set +f # re-enable globbing
-    
-    local console_name="$1"
-    local system_id="$2"
-    local download_url="$3"
+    local console_name=$(echo "$pack_string" | cut -d';' -f1)
+    local system_id=$(echo "$pack_string" | cut -d';' -f2)
+    local download_url=$(echo "$pack_string" | cut -d';' -f3)
 
-    if [ -d "$ROMS_PATH/$system_id" ] && [ "$(ls -A "$ROMS_PATH/$system_id")" ]; then
+    if [ -d "$ROMS_PATH/$system_id" ] && [ -n "$(ls -A "$ROMS_PATH/$system_id")" ]; then
         echo "Skipping '$console_name', directory already exists and is not empty."
         return
     fi
@@ -109,11 +107,12 @@ run_game_installer() {
     mkdir -p "$ROMS_PATH"
     
     total_size_kb=0
-    for pack in "${game_packs[@]}"; do
-        IFS=';'
-        set -f; set -- $pack; set +f;
-        size_kb=$(parse_size_to_kb "$4")
-        total_size_kb=$((total_size_kb + size_kb))
+    # Use a POSIX-compliant loop to calculate total size
+    echo "$game_packs_data" | while IFS=';' read -r _ _ _ size_str; do
+        if [ -n "$size_str" ]; then
+            size_kb=$(parse_size_to_kb "$size_str")
+            total_size_kb=$((total_size_kb + size_kb))
+        fi
     done
     
     available_space_kb=$(df -k /storage | awk 'NR==2 {print $4}')
@@ -121,23 +120,28 @@ run_game_installer() {
     if [ "$available_space_kb" -gt "$total_size_kb" ]; then
         read -p "Sufficient space detected to install all packs. Proceed? (y/n): " confirm
         if [ "$confirm" = "y" ]; then
-            for pack in "${game_packs[@]}"; do download_pack "$pack"; done
+            echo "$game_packs_data" | while IFS= read -r pack; do
+                if [ -n "$pack" ]; then download_pack "$pack"; fi
+            done
             return
         fi
     fi
 
     echo "Manual selection mode. Choose a pack:"
-    i=0
-    while [ $i -lt ${#game_packs[@]} ]; do
-        pack_string="${game_packs[$i]}"
-        IFS=';'; set -f; set -- $pack_string; set +f
-        printf "%d) %s (%s)\n" "$((i+1))" "$1" "$4"
-        i=$((i+1))
+    i=1
+    echo "$game_packs_data" | while IFS= read -r line; do
+        if [ -n "$line" ]; then
+            console_name=$(echo "$line" | cut -d';' -f1)
+            size_str=$(echo "$line" | cut -d';' -f4)
+            printf "%d) %s (%s)\n" "$i" "$console_name" "$size_str"
+            i=$((i+1))
+        fi
     done
     
     read -p "Enter number: " choice
-    if [ "$choice" -gt 0 ] && [ "$choice" -le ${#game_packs[@]} ]; then
-        pack_to_download="${game_packs[$((choice-1))]}"
+    pack_to_download=$(echo "$game_packs_data" | sed -n "${choice}p")
+    
+    if [ -n "$pack_to_download" ]; then
         download_pack "$pack_to_download"
     else
         echo "Invalid selection."
@@ -148,20 +152,23 @@ check_for_new_packs() {
     echo "--- Checking for new/uninstalled game packs... ---"
     new_packs_found=false
     
-    for pack in "${game_packs[@]}"; do
-        IFS=';'; set -f; set -- $pack; set +f
-        system_id="$2"
-        console_name="$1"
-        
-        if [ ! -d "$ROMS_PATH/$system_id" ] || [ -z "$(ls -A "$ROMS_PATH/$system_id")" ]; then
-            if ! $new_packs_found; then
-                echo "Uninstalled game packs from the latest list are available!"
-                new_packs_found=true
-            fi
-            
-            read -p "Install the '$console_name' pack? (y/n): " confirm
-            if [ "$confirm" = "y" ]; then
-                download_pack "$pack"
+    echo "$game_packs_data" | while IFS= read -r pack; do
+        if [ -n "$pack" ]; then
+            system_id=$(echo "$pack" | cut -d';' -f2)
+            console_name=$(echo "$pack" | cut -d';' -f1)
+
+            if [ ! -d "$ROMS_PATH/$system_id" ] || [ -z "$(ls -A "$ROMS_PATH/$system_id")" ]; then
+                if ! $new_packs_found; then
+                    echo "Uninstalled game packs from the latest list are available!"
+                    new_packs_found=true
+                fi
+                
+                # Reading input inside a pipeline requires this workaround for some shells
+                printf "Install the '%s' pack? (y/n): " "$console_name"
+                read -r confirm < /dev/tty
+                if [ "$confirm" = "y" ]; then
+                    download_pack "$pack"
+                fi
             fi
         fi
     done
@@ -188,13 +195,12 @@ EOL
     fi
 
     for system_dir in "$ROMS_PATH"/*/; do
-        if [ -d "$system_dir" ] && [ "$(ls -A "$system_dir")" ]; then
+        if [ -d "$system_dir" ] && [ -n "$(ls -A "$system_dir")" ]; then
             system_id=$(basename "$system_dir")
             
             if ! grep -q "<rompath>$ROMS_PATH/$system_id/</rompath>" "$LAUNCHERS_FILE"; then
                 echo "Adding AEL launcher for system: $system_id"
                 system_name=$(echo "$system_id" | tr '[:lower:]' '[:upper:]')
-                # POSIX-compliant random ID generator
                 launcher_id=$(date +%s%N)
                 launcher_xml="    <launcher>\n        <id>$launcher_id</id>\n        <name>$system_name</name>\n        <application>/storage/.kodi/addons/game.retroarch/addon.sh</application>\n        <args>-L /storage/.kodi/addons/game.libretro.$system_id/libretro.so &quot;%rom%&quot;</args>\n        <rompath>$ROMS_PATH/$system_id/</rompath>\n        <romext>zip|smc|sfc|fig|swc|mgd|smd|gen|md|nes|n64|z64|psx|cue|iso|chd</romext>\n        <categoryid>a57e335e-63f5-42d6-a973-c15764d13e9a</categoryid>\n    </launcher>\n</launchers>"
                 sed -i "s|</launchers>|$launcher_xml|g" "$LAUNCHERS_FILE"
