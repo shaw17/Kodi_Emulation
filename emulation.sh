@@ -2,7 +2,7 @@
 
 # --- LibreELEC On-Demand Emulation Powerhouse ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 2.5 - Replaced parsing logic again with a more compatible sed command.
+# Version 2.6 - Implemented local file parsing for increased stability.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -74,6 +74,7 @@ EOL
 populate_psx_from_myrient() {
     local system_name="PlayStation (On-Demand)"
     local system_id="psx"
+    local temp_html_file="/tmp/myrient_psx_page.html"
     
     echo "--- Creating launchers for $system_name ---"
     
@@ -86,15 +87,26 @@ populate_psx_from_myrient() {
     echo "Fetching and parsing game list from Myrient... this may take a moment."
     BASE_URL="https://myrient.erista.me/files/Redump/Sony%20-%20PlayStation/"
     
-    # A more compatible sed-based pipeline for extracting URLs from HTML
-    GAME_LIST=$(wget -qO- "$BASE_URL" | \
+    # Download the index page to a temporary local file first for stability
+    wget -qO "$temp_html_file" "$BASE_URL"
+    if [ ! -s "$temp_html_file" ]; then
+        echo "Could not download the game list page from Myrient. Skipping."
+        rm -f "$temp_html_file"
+        return
+    fi
+    
+    # A more compatible sed-based pipeline for extracting URLs from the local HTML file
+    GAME_LIST=$(cat "$temp_html_file" | \
                 sed -n 's/.*<a href="\([^"]*\)".*/\1/p' | \
                 grep -E '\.(zip|7z|chd)$' | \
                 grep -E '\((USA|En|Australia)\)' | \
                 while read -r line; do echo "$BASE_URL$line"; done)
+    
+    # Clean up the temporary file immediately after use
+    rm -f "$temp_html_file"
 
     if [ -z "$GAME_LIST" ]; then
-        echo "Could not fetch or parse game list for $system_name. Skipping."
+        echo "Could not parse the game list for $system_name. The page format may have changed. Skipping."
         return
     fi
     
