@@ -2,7 +2,7 @@
 
 # --- LibreELEC On-Demand Emulation Powerhouse ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 5.1 - Reworked to directly place all add-ons for maximum reliability.
+# Version 5.2 - Added explicit enabling of all downloaded add-ons.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -77,7 +77,7 @@ install_software() {
     # Install the Internet Archive Game Launcher add-on itself
     if [ ! -d "$KODI_ADDONS/plugin.program.iagl" ]; then
         echo "IAGL add-on not found. Downloading and extracting directly..."
-        REPO_URL_IAGL_PLUGIN="https://github.com/zach-morris/plugin.program.iagl/releases/download/v4.04/plugin.program.iagl-4.0.4.zip"
+        REPO_URL_IAGL_PLUGIN="https://github.com/zach-morris/plugin.program.iagl/releases/download/v3.1.2/plugin.program.iagl-3.1.2.zip"
         ZIP_PATH_IAGL_PLUGIN="$TEMP_DIR/iagl_plugin.zip"
 
         wget -q -O "$ZIP_PATH_IAGL_PLUGIN" "$REPO_URL_IAGL_PLUGIN"
@@ -105,6 +105,7 @@ install_software() {
     
     # Explicitly enable the add-ons to ensure they are active
     echo "Enabling add-ons..."
+    kodi-send --action="EnableAddon(repository.zachmorris)" > /dev/null 2>&1
     kodi-send --action="EnableAddon(game.retroarch)" > /dev/null 2>&1
     kodi-send --action="EnableAddon(plugin.program.iagl)" > /dev/null 2>&1
     sleep 5
@@ -115,7 +116,7 @@ install_software() {
 configure_and_instruct() {
     echo "--- Final Configuration Steps ---"
     echo
-    echo "The required software has been installed."
+    echo "The required software has been installed and enabled."
     echo "Now, please follow these final steps inside the Kodi interface:"
     echo
     echo "1.  START RETROARCH ONCE:"
