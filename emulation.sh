@@ -1,69 +1,22 @@
 #!/bin/sh
 
-# --- LibreELEC Resilient Emulation Powerhouse Script ---
+# --- LibreELEC On-Demand Emulation Powerhouse ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 1.8 - Removed incompatible '--show-progress' wget flag.
+# Version 2.1 - Dynamic list fetching from Myrient for PS1
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
 KODI_ADDONS="/storage/.kodi/addons"
-ROMS_PATH="/storage/roms"
-GAMES_DB_URL="https://raw.githubusercontent.com/shaw17/Kodi_Emulation/main/games.v1.sh" # Using a versioned filename
-GAMES_DB_TEMP_FILE="/tmp/games.sh.$$"
+ROMS_PATH="/storage/roms" # ROMs will be downloaded here temporarily
+AEL_DATA_PATH="$KODI_USERDATA/addon_data/plugin.program.advanced.emulator.launcher"
+HELPER_SCRIPT_PATH="$AEL_DATA_PATH/launch_game.sh"
 
-# --- Fetch and Source the games database in real-time ---
-echo "--- Fetching latest games list from GitHub... ---"
-
-# Ensure no leftover temp file from a previous failed run exists
-rm -f "$GAMES_DB_TEMP_FILE" 2>/dev/null
-
-wget -qO "$GAMES_DB_TEMP_FILE" "$GAMES_DB_URL"
-if [ $? -eq 0 ]; then
-    . "$GAMES_DB_TEMP_FILE" # Use POSIX-compliant source operator
-    rm "$GAMES_DB_TEMP_FILE" # Clean up after successful sourcing
-else
-    echo "ERROR: Failed to fetch the games list from GitHub."
-    echo "Please check your internet connection and the repository status."
-    rm "$GAMES_DB_TEMP_FILE" 2>/dev/null # Clean up on failure
-    exit 1
-fi
-
-if [ -z "$game_packs_data" ]; then
-    echo "ERROR: Games list is empty or could not be sourced correctly."
-    exit 1
-fi
-
-# --- Helper Functions ---
-parse_size_to_kb() {
-    local size_str=$1
-    local num=$(echo "$size_str" | sed -e 's/[a-zA-Z]//g' -e 's/ //g')
-    local unit=$(echo "$size_str" | sed -e 's/[0-9\.]//g' -e 's/ //g' | tr '[:lower:]' '[:upper:]')
-    
-    local val=0
-    if [ "$unit" = "GB" ]; then
-        val=$(awk -v n="$num" 'BEGIN { print int(n * 1024 * 1024) }')
-    elif [ "$unit" = "MB" ]; then
-        val=$(awk -v n="$num" 'BEGIN { print int(n * 1024) }')
-    elif [ "$unit" = "KB" ]; then
-        val=$(awk -v n="$num" 'BEGIN { print int(n) }')
-    fi
-    echo $val
-}
-
-# --- Core Logic Functions ---
+# --- Helper Functions & Core Logic ---
 
 install_emulation_software() {
     echo "--- Checking for essential software... ---"
     
-    if [ ! -d "$KODI_ADDONS/repository.gamestarter" ]; then
-        echo "Gamestarter repository not found. Installing..."
-        GAMESTARTER_REPO_URL="https://github.com/bite-your-idols/Gamestarter/raw/master/repository.gamestarter/repository.gamestarter-3.0.zip"
-        wget -q -P "$KODI_ADDONS/" "$GAMESTARTER_REPO_URL"
-        kodi-send --action="InstallAddon(repository.gamestarter)" > /dev/null 2>&1
-    else
-        echo "Gamestarter repository already installed."
-    fi
-    
+    # Install RetroArch and AEL
     if [ ! -d "$KODI_ADDONS/game.retroarch" ]; then
         echo "RetroArch not found. Installing..."
         kodi-send --action="InstallAddon(game.retroarch)" > /dev/null 2>&1
@@ -82,136 +35,109 @@ install_emulation_software() {
     sleep 3
 }
 
-download_pack() {
-    local pack_string="$1"
+# This function creates the helper script that AEL will call
+create_helper_script() {
+    echo "--- Creating AEL Helper Script... ---"
+    mkdir -p "$AEL_DATA_PATH"
     
-    local console_name=$(echo "$pack_string" | cut -d';' -f1)
-    local system_id=$(echo "$pack_string" | cut -d';' -f2)
-    local download_url=$(echo "$pack_string" | cut -d';' -f3)
+    cat > "$HELPER_SCRIPT_PATH" << EOL
+#!/bin/sh
+# This script is called by AEL to download a game, launch it, and then clean up.
 
-    if [ -d "$ROMS_PATH/$system_id" ] && [ -n "$(ls -A "$ROMS_PATH/$system_id")" ]; then
-        echo "Skipping '$console_name', directory already exists and is not empty."
+ROM_URL="\$1"
+SYSTEM_ID="\$2"
+ROM_NAME=\$(basename "\$ROM_URL" | sed 's/%20/ /g') # Decode spaces for display
+ROMS_PATH="/storage/roms/\$SYSTEM_ID"
+LOCAL_ROM_FILE="\$ROMS_PATH/\$(basename "\$ROM_URL")" # Use original filename for download
+
+mkdir -p "\$ROMS_PATH"
+
+# Check if the ROM is already downloaded
+if [ ! -f "\$LOCAL_ROM_FILE" ]; then
+    echo "Downloading \$ROM_NAME..."
+    wget -q -O "\$LOCAL_ROM_FILE" "\$ROM_URL"
+fi
+
+# Launch the game with RetroArch
+/storage/.kodi/addons/game.retroarch/addon.sh -L /storage/.kodi/addons/game.libretro.\$SYSTEM_ID/libretro.so "\$LOCAL_ROM_FILE"
+
+# Clean up the downloaded ROM after playing
+echo "Cleaning up \$ROM_NAME..."
+rm "\$LOCAL_ROM_FILE"
+EOL
+
+    chmod +x "$HELPER_SCRIPT_PATH"
+    echo "Helper script created at $HELPER_SCRIPT_PATH"
+}
+
+# This function dynamically fetches the PS1 game list and populates AEL
+populate_psx_from_myrient() {
+    local system_name="PlayStation (On-Demand)"
+    local system_id="psx"
+    
+    echo "--- Creating launchers for $system_name ---"
+    
+    LAUNCHERS_FILE="$AEL_DATA_PATH/launchers.xml"
+    if grep -q "<name>$system_name</name>" "$LAUNCHERS_FILE"; then
+        echo "$system_name launchers already exist. Skipping."
+        return
+    fi
+
+    echo "Fetching and parsing game list from Myrient... this may take a moment."
+    BASE_URL="https://myrient.erista.me/files/Redump/Sony%20-%20PlayStation/"
+    
+    # Fetch HTML, extract hrefs, filter for game files, build full URLs, and filter for region
+    GAME_LIST=$(wget -qO- "$BASE_URL" | \
+                grep -o 'href="[^"]*"' | \
+                sed -e 's/href="//' -e 's/"//' | \
+                grep -E '\.(zip|7z|chd)$' | \
+                grep -E '\((USA|En|Australia)\)' | \
+                while read -r line; do echo "$BASE_URL$line"; done)
+
+    if [ -z "$GAME_LIST" ]; then
+        echo "Could not fetch or parse game list for $system_name. Skipping."
         return
     fi
     
-    echo "Downloading and extracting '$console_name'..."
-    mkdir -p "$ROMS_PATH/$system_id"
-    # Removed --show-progress flag for BusyBox wget compatibility
-    wget -q -O "$ROMS_PATH/temp_pack.zip" "$download_url"
-    unzip -o -q "$ROMS_PATH/temp_pack.zip" -d "$ROMS_PATH/$system_id/"
-    rm "$ROMS_PATH/temp_pack.zip"
-    echo "'$console_name' pack installed."
-}
+    # Create a new launcher category for this system in AEL
+    launcher_id=$(date +%s%N)
+    launcher_xml="    <launcher>\n        <id>$launcher_id</id>\n        <name>$system_name</name>\n        <application>$HELPER_SCRIPT_PATH</application>\n        <categoryid>a57e335e-63f5-42d6-a973-c15764d13e9a</categoryid>\n    </launcher>\n</launchers>"
+    sed -i "s|</launchers>|$launcher_xml|g" "$LAUNCHERS_FILE"
 
-run_game_installer() {
-    echo "--- Game Pack Installer ---"
-    mkdir -p "$ROMS_PATH"
-    
-    total_size_kb=0
-    # Use a POSIX-compliant loop to calculate total size
-    echo "$game_packs_data" | while IFS=';' read -r _ _ _ size_str; do
-        if [ -n "$size_str" ]; then
-            size_kb=$(parse_size_to_kb "$size_str")
-            total_size_kb=$((total_size_kb + size_kb))
+    # Now add each game as a ROM for that launcher
+    echo "Found games. Adding to AEL..."
+    echo "$GAME_LIST" | while IFS= read -r rom_url; do
+        if [ -n "$rom_url" ]; then
+            rom_name=$(basename "$rom_url" | sed 's/%20/ /g' | sed -E 's/\.[^.]*$//')
+            rom_id=$(date +%s%N)
+            rom_xml="    <rom>\n        <id>$rom_id</id>\n        <name>$rom_name</name>\n        <rompath>$rom_url</rompath>\n        <args>&quot;$rom_url&quot; &quot;$system_id&quot;</args>\n        <launcherid>$launcher_id</launcherid>\n    </rom>\n</launchers>"
+            sed -i "s|</launchers>|$rom_xml|g" "$LAUNCHERS_FILE"
         fi
     done
-    
-    available_space_kb=$(df -k /storage | awk 'NR==2 {print $4}')
-    
-    if [ "$available_space_kb" -gt "$total_size_kb" ]; then
-        read -p "Sufficient space detected to install all packs. Proceed? (y/n): " confirm < /dev/tty
-        if [ "$confirm" = "y" ]; then
-            echo "$game_packs_data" | while IFS= read -r pack; do
-                if [ -n "$pack" ]; then download_pack "$pack"; fi
-            done
-            return
-        fi
-    fi
-
-    echo "Manual selection mode. Choose a pack:"
-    i=1
-    echo "$game_packs_data" | while IFS= read -r line; do
-        if [ -n "$line" ]; then
-            console_name=$(echo "$line" | cut -d';' -f1)
-            size_str=$(echo "$line" | cut -d';' -f4)
-            printf "%d) %s (%s)\n" "$i" "$console_name" "$size_str"
-            i=$((i+1))
-        fi
-    done
-    
-    read -p "Enter number: " choice < /dev/tty
-    pack_to_download=$(echo "$game_packs_data" | sed -n "${choice}p")
-    
-    if [ -n "$pack_to_download" ]; then
-        download_pack "$pack_to_download"
-    else
-        echo "Invalid selection."
-    fi
-}
-
-check_for_new_packs() {
-    echo "--- Checking for new/uninstalled game packs... ---"
-    new_packs_found=false
-    
-    echo "$game_packs_data" | while IFS= read -r pack; do
-        if [ -n "$pack" ]; then
-            system_id=$(echo "$pack" | cut -d';' -f2)
-            console_name=$(echo "$pack" | cut -d';' -f1)
-
-            if [ ! -d "$ROMS_PATH/$system_id" ] || [ -z "$(ls -A "$ROMS_PATH/$system_id")" ]; then
-                if ! $new_packs_found; then
-                    echo "Uninstalled game packs from the latest list are available!"
-                    new_packs_found=true
-                fi
-                
-                # Reading input inside a pipeline requires this workaround for some shells
-                printf "Install the '%s' pack? (y/n): " "$console_name"
-                read -r confirm < /dev/tty
-                if [ "$confirm" = "y" ]; then
-                    download_pack "$pack"
-                fi
-            fi
-        fi
-    done
-    
-    if ! $new_packs_found; then
-        echo "Your game collection is up to date with the latest games list (v$GAMES_DB_VERSION)."
-    fi
+    echo "Finished adding PlayStation games to AEL."
 }
 
 configure_kodi_integration() {
-    echo "--- Configuring Kodi (AEL) Integration ---"
-    AEL_DATA_PATH="$KODI_USERDATA/addon_data/plugin.program.advanced.emulator.launcher"
+    echo "--- Configuring On-Demand Kodi (AEL) Integration ---"
     mkdir -p "$AEL_DATA_PATH"
     LAUNCHERS_FILE="$AEL_DATA_PATH/launchers.xml"
 
+    # Create base files if they don't exist
     if [ ! -f "$AEL_DATA_PATH/categories.xml" ]; then
         cat > "$AEL_DATA_PATH/categories.xml" << EOL
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?><categories><category><id>a57e335e-63f5-42d6-a973-c15764d13e9a</id><name>Retro Games</name></category></categories>
 EOL
     fi
-
     if [ ! -f "$LAUNCHERS_FILE" ]; then
         echo '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><launchers></launchers>' > "$LAUNCHERS_FILE"
     fi
 
-    for system_dir in "$ROMS_PATH"/*/; do
-        if [ -d "$system_dir" ] && [ -n "$(ls -A "$system_dir")" ]; then
-            system_id=$(basename "$system_dir")
-            
-            if ! grep -q "<rompath>$ROMS_PATH/$system_id/</rompath>" "$LAUNCHERS_FILE"; then
-                echo "Adding AEL launcher for system: $system_id"
-                system_name=$(echo "$system_id" | tr '[:lower:]' '[:upper:]')
-                launcher_id=$(date +%s%N)
-                launcher_xml="    <launcher>\n        <id>$launcher_id</id>\n        <name>$system_name</name>\n        <application>/storage/.kodi/addons/game.retroarch/addon.sh</application>\n        <args>-L /storage/.kodi/addons/game.libretro.$system_id/libretro.so &quot;%rom%&quot;</args>\n        <rompath>$ROMS_PATH/$system_id/</rompath>\n        <romext>zip|smc|sfc|fig|swc|mgd|smd|gen|md|nes|n64|z64|psx|cue|iso|chd</romext>\n        <categoryid>a57e335e-63f5-42d6-a973-c15764d13e9a</categoryid>\n    </launcher>\n</launchers>"
-                sed -i "s|</launchers>|$launcher_xml|g" "$LAUNCHERS_FILE"
-            else
-                echo "AEL launcher for $system_id already exists."
-            fi
-        fi
-    done
+    # Populate the launchers for PS1
+    populate_psx_from_myrient
+    
     echo "AEL configuration check complete."
 }
+
 
 set_boot_to_games() {
     if grep -q "<startup><window>games</window></startup>" "$KODI_USERDATA/guisettings.xml"; then
@@ -229,46 +155,39 @@ set_boot_to_games() {
 
 
 # --- Main Menu ---
-echo "--- LibreELEC Emulation Powerhouse Script ---"
-echo "--- Using Games Database Version: $GAMES_DB_VERSION ---"
+echo "--- LibreELEC On-Demand Emulation Script ---"
 
 while true; do
     echo
     echo "Please select an option:"
-    echo "1) Full Install/Update (Recommended)"
-    echo "2) Check for New Game Packs"
-    echo "3) Configure Kodi Integration Only"
-    echo "4) Set Boot to Games Only"
-    echo "5) Exit"
+    echo "1) Full Install & Setup for PlayStation (On-Demand)"
+    echo "2) Configure PS1 Launchers Only"
+    echo "3) Set Boot to Games Only"
+    echo "4) Exit"
     echo
-    read -p "Enter your choice [1-5]: " choice < /dev/tty
+    read -p "Enter your choice [1-4]: " choice < /dev/tty
 
     case $choice in
         1)
             install_emulation_software
-            run_game_installer
+            create_helper_script
             configure_kodi_integration
             set_boot_to_games
             echo "Full setup check complete! Please restart LibreELEC."
             break
             ;;
         2)
-            check_for_new_packs
-            configure_kodi_integration
-            echo "Game pack check complete!"
-            break
-            ;;
-        3)
+            create_helper_script
             configure_kodi_integration
             echo "Kodi integration configured!"
             break
             ;;
-        4)
+        3)
             set_boot_to_games
             echo "Boot setting configured!"
             break
             ;;
-        5)
+        4)
             echo "Exiting."
             break
             ;;
