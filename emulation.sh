@@ -2,7 +2,7 @@
 
 # --- LibreELEC On-Demand Emulation Powerhouse ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 5.3 - Replaced EnableAddon command with direct database modification for reliability.
+# Version 5.4 - Implemented robust up-front check to prevent re-downloads.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -27,10 +27,40 @@ wait_for_kodi() {
     return 1
 }
 
+enable_addons_in_db() {
+    echo "Stopping Kodi to safely enable add-ons in the database..."
+    systemctl stop kodi
+    sleep 2
+
+    if [ -f "$KODI_DB_FILE" ]; then
+        echo "Enabling add-ons directly in Kodi's database..."
+        sqlite3 "$KODI_DB_FILE" "UPDATE installed SET enabled=1 WHERE addonID IN ('repository.zachmorris', 'game.retroarch', 'plugin.program.iagl');"
+    else
+        echo "ERROR: Kodi database file not found. Cannot enable add-ons."
+    fi
+    
+    echo "Restarting Kodi with add-ons enabled..."
+    systemctl start kodi
+    wait_for_kodi
+}
+
 # --- Core Logic Functions ---
 
 install_software() {
-    echo "--- Installing Required Add-ons using Direct Placement Method---"
+    echo "--- Checking for Required Add-ons... ---"
+
+    # More robust check: If all components exist, just ensure they're enabled and exit the function.
+    if [ -d "$KODI_ADDONS/repository.zachmorris" ] && \
+       [ -d "$KODI_ADDONS/game.retroarch" ] && \
+       [ -d "$KODI_ADDONS/plugin.program.iagl" ]; then
+        echo "All required add-ons are already installed. Verifying they are enabled..."
+        enable_addons_in_db
+        echo "--- Software check complete. ---"
+        return 0
+    fi
+
+    # If we are here, at least one component is missing. Proceed with individual installation.
+    echo "One or more add-ons are missing. Starting installation process..."
     
     TEMP_DIR="$KODI_USERDATA/temp"
     mkdir -p "$TEMP_DIR"
@@ -51,8 +81,6 @@ install_software() {
             rm -rf "$TEMP_DIR"
             return 1
         fi
-    else
-        echo "Zach Morris Repository already installed."
     fi
 
     # Install RetroArch from the Spleen1981 release page
@@ -70,8 +98,6 @@ install_software() {
             rm -rf "$TEMP_DIR"
             return 1
         fi
-    else
-        echo "RetroArch already installed."
     fi
     
     # Install the Internet Archive Game Launcher add-on itself
@@ -89,35 +115,13 @@ install_software() {
             rm -rf "$TEMP_DIR"
             return 1
         fi
-    else
-        echo "Internet Archive Game Launcher already installed."
     fi
-
 
     # Cleanup temporary download directory
     rm -rf "$TEMP_DIR"
 
-    # Restart Kodi to make it detect the new addons
-    echo "Restarting Kodi service to detect new addons..."
-    systemctl restart kodi
-    wait_for_kodi
-    if [ $? -ne 0 ]; then return 1; fi
-    
-    # NEW METHOD: Directly modify the database to enable add-ons
-    echo "Stopping Kodi to safely enable add-ons in the database..."
-    systemctl stop kodi
-    sleep 2
-
-    if [ -f "$KODI_DB_FILE" ]; then
-        echo "Enabling add-ons directly in Kodi's database..."
-        sqlite3 "$KODI_DB_FILE" "UPDATE installed SET enabled=1 WHERE addonID IN ('repository.zachmorris', 'game.retroarch', 'plugin.program.iagl');"
-    else
-        echo "ERROR: Kodi database file not found. Cannot enable add-ons."
-    fi
-    
-    echo "Restarting Kodi with add-ons enabled..."
-    systemctl start kodi
-    wait_for_kodi
+    # Now that all files are in place, enable them in the database.
+    enable_addons_in_db
 
     echo "--- Software installation check complete. ---"
 }
