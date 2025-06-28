@@ -2,7 +2,7 @@
 
 # --- LibreELEC Resilient Emulation Powerhouse Script ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 1.4 - Pointing to versioned games.sh file for reliability.
+# Version 1.5 - Replaced select loop with POSIX-compliant menu for full compatibility.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -231,12 +231,19 @@ set_boot_to_games() {
 echo "--- LibreELEC Emulation Powerhouse Script ---"
 echo "--- Using Games Database Version: $GAMES_DB_VERSION ---"
 
-PS3="Select an option: "
-options="Full_Install/Update_(Recommended) Check_for_New_Game_Packs Configure_Kodi_Integration_Only Set_Boot_to_Games_Only Exit"
-select opt in $options
-do
-    case $opt in
-        "Full_Install/Update_(Recommended)")
+while true; do
+    echo
+    echo "Please select an option:"
+    echo "1) Full Install/Update (Recommended)"
+    echo "2) Check for New Game Packs"
+    echo "3) Configure Kodi Integration Only"
+    echo "4) Set Boot to Games Only"
+    echo "5) Exit"
+    echo
+    read -p "Enter your choice [1-5]: " choice
+
+    case $choice in
+        1)
             install_emulation_software
             run_game_installer
             configure_kodi_integration
@@ -244,25 +251,27 @@ do
             echo "Full setup check complete! Please restart LibreELEC."
             break
             ;;
-        "Check_for_New_Game_Packs")
+        2)
             check_for_new_packs
             configure_kodi_integration
             echo "Game pack check complete!"
             break
             ;;
-        "Configure_Kodi_Integration_Only")
+        3)
             configure_kodi_integration
             echo "Kodi integration configured!"
             break
             ;;
-        "Set_Boot_to_Games_Only")
+        4)
             set_boot_to_games
             echo "Boot setting configured!"
             break
             ;;
-        "Exit")
+        5)
             break
             ;;
-        *) echo "Invalid option $REPLY";;
+        *)
+            echo "Invalid option. Please try again."
+            ;;
     esac
 done
