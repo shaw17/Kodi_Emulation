@@ -104,7 +104,7 @@ install_software() {
     # Install the Internet Archive Game Launcher add-on itself
     if [ ! -d "$KODI_ADDONS/plugin.program.iagl" ]; then
         echo "IAGL add-on not found. Downloading and extracting directly..."
-        REPO_URL_IAGL_PLUGIN="https://github.com/zach-morris/plugin.program.iagl/releases/download/v4.0.4/plugin.program.iagl-4.0.4.zip"
+        REPO_URL_IAGL_PLUGIN="https://github.com/zach-morris/plugin.program.iagl/releases/download/v4.04/plugin.program.iagl-4.0.4.zip"
         ZIP_PATH_IAGL_PLUGIN="$TEMP_DIR/iagl_plugin.zip"
 
         wget -q -O "$ZIP_PATH_IAGL_PLUGIN" "$REPO_URL_IAGL_PLUGIN"
