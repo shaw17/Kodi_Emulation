@@ -2,7 +2,7 @@
 
 # --- LibreELEC On-Demand Emulation Powerhouse ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 5.6 - Corrected repository download URL.
+# Version 5.7 - Automated RetroArch asset installation to prevent crashes.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -49,7 +49,7 @@ enable_addons_in_db() {
 install_software() {
     echo "--- Checking for Required Add-ons... ---"
 
-    # More robust check: If all components exist, just ensure they're enabled and exit the function.
+    # If all components exist, just ensure they're enabled and exit the function.
     if [ -d "$KODI_ADDONS/repository.zachmorris" ] && \
        [ -d "$KODI_ADDONS/game.retroarch" ] && \
        [ -d "$KODI_ADDONS/plugin.program.iagl" ]; then
@@ -59,7 +59,6 @@ install_software() {
         return 0
     fi
 
-    # If we are here, at least one component is missing. Proceed with individual installation.
     echo "One or more add-ons are missing. Starting installation process..."
     
     TEMP_DIR="$KODI_USERDATA/temp"
@@ -68,60 +67,44 @@ install_software() {
 
     # Install the Zach Morris repository for IAGL
     if [ ! -d "$KODI_ADDONS/repository.zachmorris" ]; then
-        echo "Zach Morris Repository not found. Downloading and extracting directly..."
-        # Corrected URL to use the release tag 'v1.0.4'
+        echo "Zach Morris Repository not found. Downloading and extracting..."
         REPO_URL_IAGL_REPO="https://github.com/zach-morris/repository.zachmorris/releases/download/v1.0.4/repository.zachmorris-1.0.4.zip"
         ZIP_PATH_IAGL_REPO="$TEMP_DIR/iagl_repo.zip"
-        
-        wget -q -O "$ZIP_PATH_IAGL_REPO" "$REPO_URL_IAGL_REPO"
-        if [ $? -eq 0 ]; then
-            unzip -o -q "$ZIP_PATH_IAGL_REPO" -d "$KODI_ADDONS"
-            echo "Zach Morris Repository extracted."
-        else
-            echo "ERROR: Failed to download the Zach Morris repository."
-            rm -rf "$TEMP_DIR"
-            return 1
-        fi
+        wget -q -O "$ZIP_PATH_IAGL_REPO" "$REPO_URL_IAGL_REPO" && unzip -o -q "$ZIP_PATH_IAGL_REPO" -d "$KODI_ADDONS" || { echo "ERROR: Failed to download or extract Zach Morris repository."; rm -rf "$TEMP_DIR"; return 1; }
+        echo "Zach Morris Repository extracted."
     fi
 
-    # Install RetroArch from the Spleen1981 release page
+    # Install RetroArch and its assets
     if [ ! -d "$KODI_ADDONS/game.retroarch" ]; then
-        echo "RetroArch not found. Downloading and extracting directly..."
+        echo "RetroArch not found. Downloading and extracting..."
         REPO_URL_RA="https://github.com/spleen1981/retroarch-kodi-addon-CoreELEC/releases/download/v1.7.5/script.retroarch.launcher.Amlogic-ng.arm-v1.7.5.zip"
         ZIP_PATH_RA="$TEMP_DIR/retroarch.zip"
-        
-        wget -q -O "$ZIP_PATH_RA" "$REPO_URL_RA"
-        if [ $? -eq 0 ]; then
-            unzip -o -q "$ZIP_PATH_RA" -d "$KODI_ADDONS"
-            echo "RetroArch extracted."
-        else
-            echo "ERROR: Failed to download the RetroArch add-on."
-            rm -rf "$TEMP_DIR"
-            return 1
-        fi
+        wget -q -O "$ZIP_PATH_RA" "$REPO_URL_RA" && unzip -o -q "$ZIP_PATH_RA" -d "$KODI_ADDONS" || { echo "ERROR: Failed to download or extract RetroArch."; rm -rf "$TEMP_DIR"; return 1; }
+        echo "RetroArch extracted."
+
+        echo "Downloading and installing RetroArch assets to prevent crashes..."
+        ASSETS_URL="http://buildbot.libretro.com/assets/frontend/assets.zip"
+        ASSETS_ZIP_PATH="$TEMP_DIR/assets.zip"
+        ASSETS_EXTRACT_PATH="$KODI_ADDONS/game.retroarch/resources/assets"
+        mkdir -p "$ASSETS_EXTRACT_PATH"
+        wget -q -O "$ASSETS_ZIP_PATH" "$ASSETS_URL" && unzip -o -q "$ASSETS_ZIP_PATH" -d "$ASSETS_EXTRACT_PATH" || { echo "ERROR: Failed to download or extract RetroArch assets."; rm -rf "$TEMP_DIR"; return 1; }
+        echo "RetroArch assets installed."
     fi
     
-    # Install the Internet Archive Game Launcher add-on itself
+    # Install the Internet Archive Game Launcher add-on
     if [ ! -d "$KODI_ADDONS/plugin.program.iagl" ]; then
-        echo "IAGL add-on not found. Downloading and extracting directly..."
+        echo "IAGL add-on not found. Downloading and extracting..."
+        # Corrected URL to latest version v4.0.4
         REPO_URL_IAGL_PLUGIN="https://github.com/zach-morris/plugin.program.iagl/releases/download/v4.04/plugin.program.iagl-4.0.4.zip"
         ZIP_PATH_IAGL_PLUGIN="$TEMP_DIR/iagl_plugin.zip"
-
-        wget -q -O "$ZIP_PATH_IAGL_PLUGIN" "$REPO_URL_IAGL_PLUGIN"
-        if [ $? -eq 0 ]; then
-            unzip -o -q "$ZIP_PATH_IAGL_PLUGIN" -d "$KODI_ADDONS"
-            echo "Internet Archive Game Launcher extracted."
-        else
-            echo "ERROR: Failed to download the IAGL plugin."
-            rm -rf "$TEMP_DIR"
-            return 1
-        fi
+        wget -q -O "$ZIP_PATH_IAGL_PLUGIN" "$REPO_URL_IAGL_PLUGIN" && unzip -o -q "$ZIP_PATH_IAGL_PLUGIN" -d "$KODI_ADDONS" || { echo "ERROR: Failed to download or extract IAGL plugin."; rm -rf "$TEMP_DIR"; return 1; }
+        echo "Internet Archive Game Launcher extracted."
     fi
 
     # Cleanup temporary download directory
     rm -rf "$TEMP_DIR"
 
-    # Restart Kodi to allow it to scan for and register the new add-on folders.
+    # Restart Kodi to register new files before enabling them in the DB
     echo "Restarting Kodi to register new files..."
     systemctl restart kodi
     wait_for_kodi
@@ -130,9 +113,7 @@ install_software() {
         return 1
     fi
 
-    # Now that Kodi has run once and created the database entries, enable them.
     enable_addons_in_db
-
     echo "--- Software installation check complete. ---"
 }
 
@@ -140,14 +121,13 @@ configure_and_instruct() {
     echo "--- Final Configuration Steps ---"
     echo
     echo "The required software has been installed and enabled."
+    echo "RetroArch assets have been pre-installed to prevent crashes."
     echo "Now, please follow these final steps inside the Kodi interface:"
     echo
-    echo "1.  START RETROARCH ONCE:"
+    echo "1.  (OPTIONAL) UPDATE RETROARCH CORES:"
     echo "    - Go to: Add-ons -> Game add-ons -> RetroArch"
-    echo "    - Launch it once. Inside RetroArch, go to the Main Menu."
-    echo "    - Select 'Online Updater'."
-    echo "    - Update everything: Core Info Files, Assets, Controller Profiles, etc."
-    echo "    - This is also where you can download the Cores (emulators) you need."
+    echo "    - Launch it. Inside RetroArch, go to the Main Menu -> 'Online Updater'."
+    echo "    - You can now use the 'Core Downloader' to get any specific emulators you need."
     echo "    - When finished, select 'Quit RetroArch' to return to Kodi."
     echo
     echo "2.  CONFIGURE IAGL:"
