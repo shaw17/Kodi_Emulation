@@ -68,7 +68,7 @@ install_software() {
     # Install the Zach Morris repository for IAGL
     if [ ! -d "$KODI_ADDONS/repository.zachmorris" ]; then
         echo "Zach Morris Repository not found. Downloading and extracting..."
-        REPO_URL_IAGL_REPO="https://github.com/zach-morris/repository.zachmorris/releases/download/v1.0.4/repository.zachmorris-1.0.4.zip"
+        REPO_URL_IAGL_REPO="https://github.com/zach-morris/repository.zachmorris/releases/download/1.0.4/repository.zachmorris-1.0.4.zip"
         ZIP_PATH_IAGL_REPO="$TEMP_DIR/iagl_repo.zip"
         wget -q -O "$ZIP_PATH_IAGL_REPO" "$REPO_URL_IAGL_REPO" && unzip -o -q "$ZIP_PATH_IAGL_REPO" -d "$KODI_ADDONS" || { echo "ERROR: Failed to download or extract Zach Morris repository."; rm -rf "$TEMP_DIR"; return 1; }
         echo "Zach Morris Repository extracted."
