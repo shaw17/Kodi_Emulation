@@ -2,7 +2,7 @@
 
 # --- LibreELEC On-Demand Emulation Powerhouse ---
 # Maintained at: https://github.com/shaw17/Kodi_Emulation
-# Version 5.5 - Added a Kodi restart cycle for reliable database updates.
+# Version 5.6 - Corrected repository download URL.
 
 # --- Configuration ---
 KODI_USERDATA="/storage/.kodi/userdata"
@@ -69,7 +69,8 @@ install_software() {
     # Install the Zach Morris repository for IAGL
     if [ ! -d "$KODI_ADDONS/repository.zachmorris" ]; then
         echo "Zach Morris Repository not found. Downloading and extracting directly..."
-        REPO_URL_IAGL_REPO="https://github.com/zach-morris/repository.zachmorris/releases/download/1.0.4/repository.zachmorris-1.0.4.zip"
+        # Corrected URL to use the release tag 'v1.0.4'
+        REPO_URL_IAGL_REPO="https://github.com/zach-morris/repository.zachmorris/releases/download/v1.0.4/repository.zachmorris-1.0.4.zip"
         ZIP_PATH_IAGL_REPO="$TEMP_DIR/iagl_repo.zip"
         
         wget -q -O "$ZIP_PATH_IAGL_REPO" "$REPO_URL_IAGL_REPO"
@@ -103,7 +104,6 @@ install_software() {
     # Install the Internet Archive Game Launcher add-on itself
     if [ ! -d "$KODI_ADDONS/plugin.program.iagl" ]; then
         echo "IAGL add-on not found. Downloading and extracting directly..."
-        # Updated URL from user
         REPO_URL_IAGL_PLUGIN="https://github.com/zach-morris/plugin.program.iagl/releases/download/v4.0.4/plugin.program.iagl-4.0.4.zip"
         ZIP_PATH_IAGL_PLUGIN="$TEMP_DIR/iagl_plugin.zip"
 
